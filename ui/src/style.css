@@ -77,9 +77,8 @@ p {
   height: 34px;
   border-radius: 8px;
   background: #f1f5f9;
-  display: grid;
-  place-items: center;
-  font-size: 1rem;
+  padding: 5px;
+  object-fit: contain;
   border: 1px solid #e2e8f0;
 }
 
@@ -151,23 +150,83 @@ p {
   }
 }
 
-.credit-button {
+.credit-card {
   border: none;
   background: #ffffff;
-  color: #1d4ed8;
-  font-weight: 600;
-  font-size: 0.75rem;
-  padding: 0.35rem 0.75rem;
-  border-radius: 999px;
-  box-shadow: 0 8px 16px rgba(37, 99, 235, 0.15);
-  cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
+  color: #0f172a;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 1rem 1.4rem;
+  border-radius: 18px;
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.12);
+  min-width: 260px;
+  text-align: center;
+  align-items: center;
 }
 
-.credit-button:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 12px 20px rgba(37, 99, 235, 0.2);
-  color: #1e40af;
+.credit-title {
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.credit-subtitle {
+  font-size: 0.78rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.credit-meta {
+  font-size: 0.7rem;
+  color: #94a3b8;
+}
+
+.credit-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.credit-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
+  background: #e0e7ff;
+  padding: 4px;
+  object-fit: contain;
+}
+
+.credit-links {
+  margin-top: 0.4rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.credit-link {
+  background: transparent;
+  border: none;
+  color: #64748b;
+  font-size: 0.72rem;
+  cursor: pointer;
+  padding: 0;
+}
+
+.credit-link:hover {
+  color: #2563eb;
+}
+
+.credit-sep {
+  color: #cbd5f5;
+  font-size: 0.65rem;
+}
+
+.footer {
+  display: flex;
+  justify-content: center;
+  padding: 0.5rem 0 1.5rem;
 }
 
 .panel {

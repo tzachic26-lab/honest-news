@@ -208,7 +208,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <div class="page">
     <header class="header">
       <div class="brand">
-        <div class="brand-icon">📰</div>
+        <img class="brand-icon" src="/vite.svg" alt="" />
         <div class="brand-title">חדשות אמת</div>
       </div>
       <div class="header-actions">
@@ -216,7 +216,6 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           <span class="status-dot"></span>
           <span id="status-text">מנותק</span>
         </div>
-        <button type="button" class="credit-button">קרדיט: יוצר האתר</button>
       </div>
     </header>
 
@@ -274,6 +273,24 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       </div>
       <div id="detail-body" class="detail-body"></div>
     </section>
+
+    <footer class="footer">
+      <div class="credit-card" role="contentinfo" aria-label="Site credits">
+        <div class="credit-header">
+          <img class="credit-icon" src="/vite.svg" alt="" />
+          <span class="credit-title">Honest News</span>
+        </div>
+        <span class="credit-subtitle">Created by Tzachi Cohen</span>
+        <span class="credit-meta">All Rights Reserved 2026</span>
+        <div class="credit-links">
+          <button type="button" class="credit-link">Privacy Policy</button>
+          <span class="credit-sep">•</span>
+          <button type="button" class="credit-link">Terms of Service</button>
+          <span class="credit-sep">•</span>
+          <button type="button" class="credit-link">Contact</button>
+        </div>
+      </div>
+    </footer>
   </div>
 `
 
