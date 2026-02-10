@@ -60,6 +60,12 @@ p {
   z-index: 10;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
 .brand {
   display: flex;
   align-items: center;
@@ -143,6 +149,25 @@ p {
   100% {
     opacity: 0;
   }
+}
+
+.credit-button {
+  border: none;
+  background: #ffffff;
+  color: #1d4ed8;
+  font-weight: 600;
+  font-size: 0.75rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  box-shadow: 0 8px 16px rgba(37, 99, 235, 0.15);
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
+}
+
+.credit-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 20px rgba(37, 99, 235, 0.2);
+  color: #1e40af;
 }
 
 .panel {

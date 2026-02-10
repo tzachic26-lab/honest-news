@@ -211,9 +211,12 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <div class="brand-icon">📰</div>
         <div class="brand-title">חדשות אמת</div>
       </div>
-      <div class="status">
-        <span class="status-dot"></span>
-        <span id="status-text">מנותק</span>
+      <div class="header-actions">
+        <div class="status">
+          <span class="status-dot"></span>
+          <span id="status-text">מנותק</span>
+        </div>
+        <button type="button" class="credit-button">קרדיט: יוצר האתר</button>
       </div>
     </header>
 
