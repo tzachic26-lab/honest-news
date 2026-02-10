@@ -1,26 +1,16 @@
 {
   "version": 2,
-  "builds": [
+  "installCommand": "npm install --prefix ui",
+  "buildCommand": "npm run build --prefix ui",
+  "outputDirectory": "ui/dist",
+  "rewrites": [
     {
-      "src": "ui/package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "ui/dist"
-      }
+      "source": "/api/(.*)",
+      "destination": "/api/$1.py"
     },
     {
-      "src": "api/**/*.py",
-      "use": "@vercel/python"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "/api/$1.py"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
