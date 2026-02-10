@@ -268,9 +268,9 @@ p {
   flex-wrap: nowrap;
   gap: 1rem;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   width: 100%;
-  flex-direction: row-reverse;
+  flex-direction: row;
 }
 
 .search-results {
@@ -321,7 +321,7 @@ p {
 
 .search-icon {
   position: absolute;
-  right: 8px;
+  right: 10px;
   top: 50%;
   transform: translateY(-50%);
   font-size: 0.95rem;
@@ -408,7 +408,7 @@ input[type="number"] {
 input[type="text"] {
   border: 1px solid #dbe4f0;
   border-radius: 10px;
-  padding: 0.6rem 2.4rem 0.6rem 1rem;
+  padding: 0.6rem 3rem 0.6rem 1rem;
   font-size: 0.9rem;
   width: 100%;
   background: #f8fafc;
