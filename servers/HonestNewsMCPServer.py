@@ -650,14 +650,35 @@ def headline_details(headline: str) -> dict[str, object]:
     if not llm:
         print("headline_details: using RSS data (no LLM)")
         if exact_match:
+            details_lines = [
+                f"כותרת: {exact_match['title']}",
+                f"מקור: {exact_match['source']}",
+                f"תאריך פרסום: {exact_match['published']}",
+                "",
+                "תקציר מהמקור:",
+            ]
+            summary_text = (exact_match.get("summary") or "").strip()
+            if summary_text:
+                for part in re.split(r"[.!?]\s+", summary_text):
+                    part = part.strip()
+                    if part:
+                        details_lines.append(f"• {part}")
+            else:
+                details_lines.append(exact_match.get("summary") or "(אין תקציר)")
+            related = [i for i in items[:6] if i.get("title") and i["title"] != exact_match["title"]][:3]
+            if related:
+                details_lines.append("")
+                details_lines.append("כתבות קשורות מהמקור:")
+                for r in related:
+                    details_lines.append(f"- {r['title']} ({r.get('source', '')})")
             return {
                 "title": exact_match["title"],
                 "source": exact_match["source"],
                 "published": exact_match["published"],
                 "summary": exact_match["summary"],
-                "details": "",
+                "details": "\n".join(details_lines),
                 "key_points": [],
-                "source_context": "",
+                "source_context": f"מקור: {exact_match['source']}, תאריך: {exact_match['published']}",
             }
         return {
             "title": headline,
@@ -670,20 +691,26 @@ def headline_details(headline: str) -> dict[str, object]:
         }
 
     print("headline_details: using ChatGPT")
-    top_items = items[:5]
+    top_items = items[:10]
     context = "\n".join(
         f"- כותרת: {item['title']}\n  תקציר: {item['summary']}\n  מקור: {item['source']}\n  תאריך: {item['published']}"
         for item in top_items
     )
     prompt = (
-        "השתמש בכלי החיפוש שלך  על סמך הכותרת שסופקה וסכם בעברית את מה שנמצא, "
-        "אך הסתמך רק על הכותרות והתקצירים שסופקו. "
-        "החזר תשובה בפורמט טקסט עם כותרות שדה בלבד (בלי JSON): "
-        "SUMMARY:, DETAILS:, KEY_POINTS:, SOURCE_CONTEXT:. "
-        "ב-DETAILS החזר 10-20 שורות קצרות. "
-        "ב-KEY_POINTS החזר רשימה עם מקפים (-). "
-        "אל תמציא עובדות."
-        f"\nכותרת: {headline}"
+        "על סמך הכותרת והחומר מהמקורות שסופקו להלן, כתוב בעברית סיכום מפורט. "
+        "הסתמך אך ורק על הכותרות והתקצירים שסופקו – אל תמציא עובדות.\n\n"
+        "החזר תשובה בפורמט טקסט עם כותרות שדה (בלי JSON):\n"
+        "SUMMARY:\n"
+        "  (פסקה או שתיים – סיכום כללי של הידיעה, 4–6 משפטים, בהתבסס על המקור)\n"
+        "DETAILS:\n"
+        "  (חובה: לפחות 10 שורות ועד 20 שורות. כל שורה – עובדה או פרט קונקרטי מהמקור. "
+        "כתוב פרטים ספציפיים: שמות, תאריכים, מספרים, ציטוטים, הסברים מהתקצירים.)\n"
+        "KEY_POINTS:\n"
+        "  (רשימה עם מקפים, 5–8 נקודות עיקריות)\n"
+        "SOURCE_CONTEXT:\n"
+        "  (מאילו מקורות ומועדים השתמשת)\n\n"
+        "כותרת מבוקשת: "
+        f"{headline}"
     )
     response = llm.invoke(f"{prompt}\n\n{context}")
     parsed = _parse_llm_sections(response.content)
