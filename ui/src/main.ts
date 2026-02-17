@@ -67,13 +67,48 @@ function escapeHtml(text: string): string {
     .replace(/'/g, '&#039;')
 }
 
+/** Renders summary/details with paragraphs and line breaks (for topic search / ChatGPT-style). */
+function formatTopicSummary(data: StructuredSummary): string {
+  const parts: string[] = []
+  const para = (s: string) =>
+    s.replace(/\\n/g, '\n')
+      .split(/\n\n+/)
+      .map((p) => `<p>${escapeHtml(p.trim()).replace(/\n/g, '<br/>')}</p>`)
+      .join('')
+  if (data.summary) {
+    parts.push(`<div class="detail-section"><strong>תקציר</strong><div class="summary-body">${para(data.summary)}</div></div>`)
+  }
+  if (data.details) {
+    parts.push(`<div class="detail-section"><strong>פרטים נוספים</strong><div class="summary-body">${para(data.details)}</div></div>`)
+  }
+  if (data.key_points?.length) {
+    const items = data.key_points.map((item) => `<li>${escapeHtml(item)}</li>`).join('')
+    parts.push(`<div class="detail-section"><strong>נקודות מרכזיות</strong><ul>${items}</ul></div>`)
+  }
+  if (data.source_context) {
+    parts.push(
+      `<div class="detail-section"><strong>מקור</strong><p>${escapeHtml(data.source_context)}</p></div>`
+    )
+  }
+  return parts.join('')
+}
+
+/** Renders text with paragraphs (\n\n) and line breaks (\n) for clear layout. */
+function formatParagraphs(s: string): string {
+  const normalized = s.replace(/\\n/g, '\n')
+  return normalized
+    .split(/\n\n+/)
+    .map((p) => `<p class="detail-paragraph">${escapeHtml(p.trim()).replace(/\n/g, '<br/>')}</p>`)
+    .join('')
+}
+
 function formatStructuredSummary(data: StructuredSummary): string {
   const parts: string[] = []
   if (data.summary) {
-    parts.push(`<div class="detail-section"><strong>תקציר</strong><p>${escapeHtml(data.summary)}</p></div>`)
+    parts.push(`<div class="detail-section"><strong>תקציר</strong><div class="summary-body">${formatParagraphs(data.summary)}</div></div>`)
   }
   if (data.details) {
-    parts.push(`<div class="detail-section"><strong>פרטים נוספים</strong><p>${escapeHtml(data.details)}</p></div>`)
+    parts.push(`<div class="detail-section"><strong>פרטים נוספים</strong><div class="summary-body">${formatParagraphs(data.details)}</div></div>`)
   }
   if (data.key_points?.length) {
     const items = data.key_points.map((item) => `<li>${escapeHtml(item)}</li>`).join('')
@@ -462,7 +497,7 @@ async function runTopicSearch(): Promise<void> {
       selectedOrientation === 'right' ? 'ימין' : selectedOrientation === 'left' ? 'שמאל' : 'ניטרלי'
     searchResultsTitle.textContent = query
     searchResultsMeta.textContent = 'חיפוש נושא'
-    searchResultsBody.innerHTML = formatStructuredSummary(summary)
+    searchResultsBody.innerHTML = formatTopicSummary(summary)
     searchResults.classList.remove('hidden')
     loadState.textContent = 'החיפוש הושלם'
     return

@@ -44,7 +44,7 @@ async function initialize() {
     clientInfo: { name: "honest-news-ui-bridge", version: "0.1.0" },
     capabilities: {},
   });
-  sendMessage({ jsonrpc: "2.0", method: "initialized", params: {} });
+  sendMessage({ jsonrpc: "2.0", method: "notifications/initialized" });
 }
 
 mcpProcess.stdout.on("data", (chunk) => {

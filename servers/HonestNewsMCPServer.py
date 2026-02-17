@@ -6,7 +6,7 @@ import urllib.request
 import html
 import re
 import time
-from datetime import date
+from datetime import date, timedelta
 from email.utils import parsedate_to_datetime
 import xml.etree.ElementTree as ET
 
@@ -25,6 +25,11 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")  # ensure Hebrew output works on Windows
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
+
+
+def _log(msg: str) -> None:
+    """Log to stderr so it appears in terminal when running under MCP bridge (stdout is used for protocol)."""
+    print(msg, file=sys.stderr, flush=True)
 
 
 _RSS_BASE_URL = "https://news.google.com/rss"
@@ -137,6 +142,18 @@ def _is_today(pub_date: str) -> bool:
     except Exception:
         return False
     return dt.date() == date.today()
+
+
+def _is_recent(pub_date: str, days: int = 14) -> bool:
+    """True if pub_date is within the last `days` days (inclusive)."""
+    if not pub_date:
+        return False
+    try:
+        dt = parsedate_to_datetime(pub_date)
+    except Exception:
+        return False
+    cutoff = date.today() - timedelta(days=days)
+    return dt.date() >= cutoff
 
 
 def _clean_summary(summary: str) -> str:
@@ -318,6 +335,13 @@ def _parse_llm_json_any(text: str) -> object | None:
     return None
 
 
+def _normalize_newlines(s: str) -> str:
+    """Convert literal \\n in text to real newlines so they display as line breaks."""
+    if not s:
+        return s
+    return s.replace("\\n", "\n")
+
+
 def _parse_llm_sections(text: str) -> dict[str, object]:
     summary = ""
     details_lines: list[str] = []
@@ -328,6 +352,8 @@ def _parse_llm_sections(text: str) -> dict[str, object]:
     for raw_line in text.splitlines():
         line = raw_line.strip()
         if not line:
+            if section == "summary" and summary:
+                summary = summary + "\n\n"
             continue
         upper = line.upper()
         if upper.startswith("SUMMARY:"):
@@ -352,7 +378,13 @@ def _parse_llm_sections(text: str) -> dict[str, object]:
             continue
 
         if section == "summary":
-            summary = f"{summary} {line}".strip()
+            if not summary:
+                summary = line
+            elif summary.endswith("\n\n"):
+                summary = summary + line
+            else:
+                summary = summary + " " + line
+            summary = summary.strip()
         elif section == "details":
             details_lines.append(line)
         elif section == "key_points":
@@ -360,7 +392,8 @@ def _parse_llm_sections(text: str) -> dict[str, object]:
         elif section == "source_context":
             source_context = f"{source_context} {line}".strip()
 
-    details = "\n".join(details_lines).strip()
+    details = _normalize_newlines("\n".join(details_lines).strip())
+    summary = _normalize_newlines(summary)
     return {
         "summary": summary,
         "details": details,
@@ -432,7 +465,7 @@ def latest_headlines(limit: int = 5, orientation: str | None = None) -> list[dic
     llm = _get_llm()
     use_llm = os.getenv("NEWS_HEADLINES_USE_LLM", "0") == "1"
     if not llm or not use_llm:
-        print("latest_headlines: using RSS data (LLM disabled)")
+        _log("latest_headlines: using RSS data (LLM disabled)")
         return [
             {
                 "title": item["title"],
@@ -443,7 +476,7 @@ def latest_headlines(limit: int = 5, orientation: str | None = None) -> list[dic
             for item in selected
         ]
 
-    print("latest_headlines: using ChatGPT")
+    _log("latest_headlines: using ChatGPT")
     combined = "\n".join(
         f"- כותרת: {item['title']}\n  תקציר: {item['summary']}"
         for item in selected
@@ -483,17 +516,9 @@ def latest_headlines(limit: int = 5, orientation: str | None = None) -> list[dic
 @mcp.tool()
 def summarize_news_topic(query: str, orientation: str | None = None, limit: int = 6) -> dict[str, object]:
     """
-    תפקיד: אתה מנתח חדשות בכיר ומומחה בסינתזת מידע ממקורות מרובים.
-המשימה: עליך לסכם את החדשות האחרונות בנושא [הכנס כאן את הנושא שלך].
-הנחיות לביצוע:
-איסוף וסינתזה: סרוק ושלב מידע ממספר מקורות מובילים (לפחות 3-5 מקורות שונים).
-מבנה הסיכום:
-סקירה כללית: פתח בסיכום תמציתי של האירועים העיקריים (2-3 פסקאות).
-חלוקה לפי כיוונים/נרטיבים: חלק את המידע לתתי-נושאים לפי זוויות ראייה שונות (למשל: היבט פוליטי, כלכלי, ביטחוני, או דעות תומכות מול מתנגדות).
-ניתוח עומק: עבור כל זווית, הרחב על הפרטים המהותיים, כולל ציטוטים בולטים או נתונים מספריים אם קיימים.
-נייטרליות וייחוס: הקפד על שפה אובייקטיבית וייחס את המידע למקורותיו (למשל: "לפי דיווח ב-X...", "מקורות ב-Y טוענים...").
-שפה וסגנון: כתוב בעברית רהוטה, מקצועית וברורה. הימנע מחזרתיות ומשימוש במילים ריקות.
-פלט נדרש: סיכום ארוך ומפורט (לפחות 500 מילה) המאורגן באמצעות כותרות מודגשות ונקודות (Bullet Points) לשיפור הקריאות.
+    Summarize news on a topic the way ChatGPT would when asked for more info. Uses the LLM
+    (OpenAI) when OPENAI_API_KEY is set for a connected, conversational summary; otherwise
+    falls back to RSS-only. Returns summary, details, key_points, sources, source_context.
     """
     query_text = query.strip()
     if not query_text:
@@ -510,8 +535,9 @@ def summarize_news_topic(query: str, orientation: str | None = None, limit: int 
     rss_query = _build_query_for_orientation(primary_query, orientation)
     rss_xml = _fetch_rss(rss_query)
     parsed_items = _parse_items(rss_xml)
-    items = [item for item in parsed_items if _is_today(item.get("published", ""))]
-    if not items:
+    # Prefer items from the last 1–2 weeks for overview + background; fall back to all if few.
+    items = [item for item in parsed_items if _is_recent(item.get("published", ""), 14)]
+    if len(items) < 5:
         items = parsed_items
     normalized_query = query_text.lower()
     if normalized_query:
@@ -545,7 +571,7 @@ def summarize_news_topic(query: str, orientation: str | None = None, limit: int 
     except ValueError:
         context_limit = None
     if context_limit is None:
-        context_limit = min(max(limit * 2, limit), 8)
+        context_limit = min(max(limit * 3, 20), 30)
     selected, _ = _dedupe_items(items, context_limit)
     if not selected:
         return {
@@ -565,51 +591,83 @@ def summarize_news_topic(query: str, orientation: str | None = None, limit: int 
             if filtered:
                 selected = filtered
 
-    selected = selected[:limit]
+    # Send more items to the LLM for a richer overview and background (cap at 25).
+    selected = selected[: min(len(selected), 25)]
     llm = _get_llm()
     if not llm:
+        _log("summarize_news_topic: using RSS only (no LLM). Set OPENAI_API_KEY for LLM summary.")
+        # No LLM: build one connected summary from RSS sentences (no "title - source" list).
+        sentences = []
+        for item in selected[:12]:
+            s = (item.get("summary") or "").strip()
+            if s:
+                for sent in re.split(r"[.!?]\s+", s):
+                    sent = sent.strip()
+                    if len(sent) > 15:
+                        sentences.append(sent)
+        if not sentences:
+            for item in selected[:10]:
+                t = (item.get("title") or "").strip()
+                if t:
+                    sentences.append(t + ".")
+        connectors = ("בנוסף, ", "לפי הדיווחים, ", "עם זאת, ", "כמו כן, ", "בדיווחים נמסר כי ", "")
+        paras = []
+        i = 0
+        c = 0
+        while i < len(sentences) and len(paras) < 5:
+            chunk = sentences[i : i + 4]
+            i += 4
+            prefix = connectors[c % len(connectors)] if c else "להלן סיכום על פי הדיווחים האחרונים. "
+            paras.append(prefix + " ".join(chunk) + ("." if not chunk[-1].endswith(".") else ""))
+            c += 1
+        summary = "\n\n".join(paras) if paras else "לא נמצא תוכן לסיכום. להפעלת סיכום מחובר הגדר OPENAI_API_KEY."
+        details_lines = ["עיקרי הדיווחים מהמקורות:\n"]
+        for item in selected[:10]:
+            if item.get("summary"):
+                details_lines.append(item.get("summary", "").strip()[:200] + ("..." if len(item.get("summary", "")) > 200 else ""))
+            details_lines.append(f"(מקור: {item.get('source', '')})\n")
         return {
             "topic": query,
             "orientation": orientation or "neutral",
-            "summary": "",
-            "key_points": [],
+            "summary": summary,
+            "details": "\n".join(details_lines),
+            "key_points": [(item.get("title", "") or "")[:80] for item in selected[:6]],
             "sources": [item.get("title", "") for item in selected],
+            "source_context": f"מקורות מהשבועיים האחרונים, {len(selected)} פריטים.",
         }
 
+    _log("summarize_news_topic: using LLM (ChatGPT)")
     context = "\n".join(
         f"- כותרת: {item['title']}\n  תקציר: {item['summary']}\n  מקור: {item['source']}\n  תאריך: {item['published']}"
         for item in selected
     )
     prompt = (
-        "תפקיד: אתה מנתח חדשות בכיר ומומחה בסינתזת מידע ממקורות מרובים.\n"
-        "המשימה: עליך לסכם את החדשות האחרונות בנושא המבוקש, אך ורק על סמך הכותרות והתקצירים שסופקו.\n"
-        "הנחיות לביצוע:\n"
-        "- איסוף וסינתזה: סרוק ושלב מידע ממספר מקורות מובילים (לפחות 3-5 מקורות שונים) מתוך החומר שסופק.\n"
-        "- מבנה הסיכום:\n"
-        "  * סקירה כללית: פתח בסיכום תמציתי של האירועים העיקריים (2-3 פסקאות).\n"
-        "  * חלוקה לפי כיוונים/נרטיבים: חלק את המידע לתתי-נושאים לפי זוויות ראייה שונות.\n"
-        "  * ניתוח עומק: עבור כל זווית, הרחב על הפרטים המהותיים, כולל נתונים מספריים אם קיימים.\n"
-        "- נייטרליות וייחוס: הקפד על שפה אובייקטיבית וייחס את המידע למקורותיו (למשל: \"לפי דיווח ב-X...\").\n"
-        "- שפה וסגנון: כתוב בעברית רהוטה, מקצועית וברורה. הימנע מחזרתיות.\n"
-        "פלט נדרש: החזר JSON בלבד במבנה: {"
-        "\"summary\": \"לפחות 500 מילים\", "
-        "\"details\": \"18-28 שורות קצרות\", "
-        "\"key_points\": [\"נקודה 1\", \"נקודה 2\", \"נקודה 3\", \"נקודה 4\", \"נקודה 5\", \"נקודה 6\", \"נקודה 7\", \"נקודה 8\"], "
-        "\"sources\": [\"כותרת 1\", \"כותרת 2\"], "
-        "\"source_context\": \"פירוט קצר על מקורות ומועדים\""
-        "}.\n"
-        "אל תכלול טקסט מחוץ ל-JSON ואל תמציא עובדות."
-        f"\nנושא: {query}"
+        "אתה ChatGPT. המשתמש ביקש עוד מידע על נושא בחדשות. ענה בעברית בתשובה אחת רצופה. השתמש רק בכותרות והתקצירים למטה – אל תמציא עובדות.\n\n"
+        "פורמט התשובה (כותרות שדה בדיוק כך, בלי JSON):\n\n"
+        "SUMMARY:\n"
+        "  כאן רק פרוזה רצופה: 3–5 פסקאות. כל פסקה – כמה משפטים מחוברים (השתמש ב\"בנוסף\", \"לפי הדיווחים\", \"עם זאת\").\n"
+        "  אסור להעתיק רשימת כותרות או שורות כמו \"כותרת - מקור\". אסור רשימת נקודות. רק משפטים שמתחברים לפסקאות.\n"
+        "  להשאיר שורה ריקה בין פסקאות.\n\n"
+        "DETAILS:\n"
+        "  10–20 שורות עם עובדות וציטוטים (כל שורה עובדה אחת).\n\n"
+        "KEY_POINTS:\n"
+        "  רשימה עם מקף בתחילת כל שורה, 5–8 נקודות.\n\n"
+        "SOURCE_CONTEXT:\n"
+        "  משפט אחד: מאילו מקורות ומועדים.\n\n"
+        "נושא: "
+        f"{query}"
         f"\nנטייה: {orientation or 'neutral'}"
     )
     response = llm.invoke(f"{prompt}\n\n{context}")
-    parsed = _parse_llm_json(response.content) or {}
+    parsed = _parse_llm_sections(response.content)
+    if not parsed.get("summary") and ("summary" in response.content.lower() or "SUMMARY" in response.content):
+        parsed = _parse_llm_sections(_coerce_json_like_to_sections(response.content))
 
     return {
         "topic": query,
         "orientation": orientation or "neutral",
-        "summary": parsed.get("summary", ""),
-        "details": parsed.get("details", ""),
+        "summary": _normalize_newlines(parsed.get("summary", "")),
+        "details": _normalize_newlines(parsed.get("details", "")),
         "key_points": parsed.get("key_points", []),
         "sources": parsed.get("sources", [item.get('title', '') for item in selected]),
         "source_context": parsed.get("source_context", ""),
@@ -618,7 +676,9 @@ def summarize_news_topic(query: str, orientation: str | None = None, limit: int 
 @mcp.tool()
 def headline_details(headline: str) -> dict[str, object]:
     """
-    Given a headline string, return more details (title, source, published, summary).
+    Given a headline string, return rich details: title, source, published, summary, and
+    a detailed body (up to 40 lines) that includes ~80% of the source content, formatted
+    like ChatGPT (paragraphs, clear sections, readable flow).
     """
     rss_xml = _fetch_rss(headline)
     items = _parse_items(rss_xml)
@@ -648,35 +708,36 @@ def headline_details(headline: str) -> dict[str, object]:
 
     llm = _get_llm()
     if not llm:
-        print("headline_details: using RSS data (no LLM)")
+        _log("headline_details: using RSS data (no LLM)")
         if exact_match:
-            details_lines = [
-                f"כותרת: {exact_match['title']}",
-                f"מקור: {exact_match['source']}",
-                f"תאריך פרסום: {exact_match['published']}",
-                "",
-                "תקציר מהמקור:",
-            ]
+            # Structured details: clear sections separated by \n\n for display.
             summary_text = (exact_match.get("summary") or "").strip()
+            header = f"מקור: {exact_match['source']} | תאריך: {exact_match['published']}"
+            body_parts = []
             if summary_text:
-                for part in re.split(r"[.!?]\s+", summary_text):
-                    part = part.strip()
-                    if part:
-                        details_lines.append(f"• {part}")
+                sentences = [s.strip() for s in re.split(r"[.!?]\s+", summary_text) if s.strip()]
+                line_count = 0
+                i = 0
+                max_lines = 32
+                while i < len(sentences) and line_count < max_lines:
+                    para = []
+                    for _ in range(min(3, len(sentences) - i)):
+                        para.append(sentences[i])
+                        i += 1
+                    body_parts.append(" ".join(para) + ("." if not para[-1].endswith(".") else ""))
+                    line_count += 1
             else:
-                details_lines.append(exact_match.get("summary") or "(אין תקציר)")
+                body_parts.append(exact_match.get("summary") or "(אין תקציר)")
+            details_str = header + "\n\nעיקרי הדיווח:\n\n" + "\n\n".join(body_parts)
             related = [i for i in items[:6] if i.get("title") and i["title"] != exact_match["title"]][:3]
             if related:
-                details_lines.append("")
-                details_lines.append("כתבות קשורות מהמקור:")
-                for r in related:
-                    details_lines.append(f"- {r['title']} ({r.get('source', '')})")
+                details_str += "\n\nכתבות קשורות:\n\n" + "\n".join(f"• {r['title']} ({r.get('source', '')})" for r in related)
             return {
                 "title": exact_match["title"],
                 "source": exact_match["source"],
                 "published": exact_match["published"],
                 "summary": exact_match["summary"],
-                "details": "\n".join(details_lines),
+                "details": details_str,
                 "key_points": [],
                 "source_context": f"מקור: {exact_match['source']}, תאריך: {exact_match['published']}",
             }
@@ -690,26 +751,20 @@ def headline_details(headline: str) -> dict[str, object]:
             "source_context": "",
         }
 
-    print("headline_details: using ChatGPT")
-    top_items = items[:10]
+    _log("headline_details: using ChatGPT")
+    top_items = items[:8]
     context = "\n".join(
         f"- כותרת: {item['title']}\n  תקציר: {item['summary']}\n  מקור: {item['source']}\n  תאריך: {item['published']}"
         for item in top_items
     )
     prompt = (
-        "על סמך הכותרת והחומר מהמקורות שסופקו להלן, כתוב בעברית סיכום מפורט. "
-        "הסתמך אך ורק על הכותרות והתקצירים שסופקו – אל תמציא עובדות.\n\n"
-        "החזר תשובה בפורמט טקסט עם כותרות שדה (בלי JSON):\n"
-        "SUMMARY:\n"
-        "  (פסקה או שתיים – סיכום כללי של הידיעה, 4–6 משפטים, בהתבסס על המקור)\n"
-        "DETAILS:\n"
-        "  (חובה: לפחות 10 שורות ועד 20 שורות. כל שורה – עובדה או פרט קונקרטי מהמקור. "
-        "כתוב פרטים ספציפיים: שמות, תאריכים, מספרים, ציטוטים, הסברים מהתקצירים.)\n"
-        "KEY_POINTS:\n"
-        "  (רשימה עם מקפים, 5–8 נקודות עיקריות)\n"
-        "SOURCE_CONTEXT:\n"
-        "  (מאילו מקורות ומועדים השתמשת)\n\n"
-        "כותרת מבוקשת: "
+        "על סמך החומר מהמקורות להלן, החזר תשובה בעברית במבנה ברור וקצר.\n\n"
+        "פורמט (כותרות שדה, בלי JSON):\n"
+        "SUMMARY:\n (1–2 פסקאות)\n"
+        "DETAILS:\n (עיקרי הדיווח: כותרת קצרה ואז 15–25 שורות, פסקאות מופרדות ב-\\n\\n)\n"
+        "KEY_POINTS:\n (4–6 שורות עם מקף)\n"
+        "SOURCE_CONTEXT:\n (מקורות ומועדים)\n\n"
+        "כלול עובדות עיקריות מהמקור. כותרת מבוקשת: "
         f"{headline}"
     )
     response = llm.invoke(f"{prompt}\n\n{context}")
@@ -720,8 +775,8 @@ def headline_details(headline: str) -> dict[str, object]:
         "title": exact_match["title"] if exact_match else headline,
         "source": exact_match["source"] if exact_match else "",
         "published": exact_match["published"] if exact_match else "",
-        "summary": parsed.get("summary", ""),
-        "details": parsed.get("details", ""),
+        "summary": _normalize_newlines(parsed.get("summary", "")),
+        "details": _normalize_newlines(parsed.get("details", "")),
         "key_points": parsed.get("key_points", []),
         "source_context": parsed.get("source_context", ""),
     }
