@@ -104,24 +104,33 @@ function formatParagraphs(s: string): string {
 
 function formatStructuredSummary(data: StructuredSummary): string {
   const parts: string[] = []
+  
+  // Merge all sections into one narrative summary
+  let narrative = ""
+  
   if (data.summary) {
-    parts.push(`<div class="detail-section"><strong>תקציר</strong><div class="summary-body">${formatParagraphs(data.summary)}</div></div>`)
+    narrative += data.summary + "\n\n"
   }
+  
   if (data.details) {
-    parts.push(`<div class="detail-section"><strong>פרטים נוספים</strong><div class="summary-body">${formatParagraphs(data.details)}</div></div>`)
+    narrative += data.details + "\n\n"
   }
+  
   if (data.key_points?.length) {
-    const items = data.key_points.map((item) => `<li>${escapeHtml(item)}</li>`).join('')
-    parts.push(`<div class="detail-section"><strong>נקודות מרכזיות</strong><ul>${items}</ul></div>`)
+    narrative += "נקודות מרכזיות:\n"
+    data.key_points.forEach((point) => {
+      narrative += "• " + point + "\n"
+    })
+    narrative += "\n"
   }
+  
   if (data.source_context) {
-    parts.push(
-      `<div class="detail-section"><strong>מקור</strong><p>${escapeHtml(
-        data.source_context
-      )}</p></div>`
-    )
+    narrative += "מקורות: " + data.source_context
   }
-  return parts.join('')
+  
+  // Format as paragraphs
+  const formatted = formatParagraphs(narrative.trim())
+  return `<div class="detail-section"><strong>סיכום מלא</strong><div class="summary-body">${formatted}</div></div>`
 }
 
 function tryParseStructuredSummary(value: unknown): StructuredSummary | null {

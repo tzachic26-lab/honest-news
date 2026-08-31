@@ -17,6 +17,7 @@ from langchain_openai import ChatOpenAI
 from mcp.client.session import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.server.fastmcp import FastMCP
+from tavily import TavilyClient
 
 
 mcp = FastMCP("HonestNews")
@@ -126,7 +127,7 @@ def _parse_items(rss_xml: str) -> list[dict[str, str]]:
                 "title": title.strip(),
                 "link": link.strip(),
                 "published": published.strip(),
-                "summary": _clean_summary(summary),
+                "summary": _clean_summary(summary),  # Use RSS summary for fast loading
                 "source": source.strip(),
             }
         )
@@ -164,6 +165,46 @@ def _clean_summary(summary: str) -> str:
     text = html.unescape(text)
     text = re.sub(r"https?://\S+", "", text)
     return " ".join(text.split()).strip()
+
+
+def _search_web_context(query: str, max_results: int = 5) -> str:
+    """Search the web for additional context using Tavily."""
+    tavily_api_key = os.getenv("TAVILY_API_KEY")
+    if not tavily_api_key:
+        _log("Tavily API key not configured, skipping web search")
+        return ""
+    
+    try:
+        _log(f"Searching web for context on: {query}")
+        client = TavilyClient(api_key=tavily_api_key)
+        response = client.search(
+            query=query,
+            max_results=max_results,
+            search_depth="basic",
+            include_answer=True,
+            include_raw_content=False,
+            include_images=False
+        )
+        
+        # Extract relevant information from search results
+        context_parts = []
+        if response.get("answer"):
+            context_parts.append(f"תשובה כללית: {response['answer']}")
+        
+        for result in response.get("results", [])[:max_results]:
+            title = result.get("title", "")
+            url = result.get("url", "")
+            content = result.get("content", "")
+            if content:
+                context_parts.append(f"מקור: {title}\n{content[:500]}")
+        
+        web_context = "\n\n".join(context_parts)
+        _log(f"Retrieved {len(web_context)} characters of web context")
+        return web_context
+        
+    except Exception as exc:
+        _log(f"Failed to search web with Tavily: {exc}")
+        return ""
 
 
 def _normalize_text(text: str) -> str:
@@ -752,19 +793,40 @@ def headline_details(headline: str) -> dict[str, object]:
         }
 
     _log("headline_details: using ChatGPT")
+    
+    # Search web for additional context
+    if exact_match:
+        web_context = _search_web_context(exact_match["title"], max_results=3)
+        if web_context:
+            _log("Successfully retrieved web context")
+        else:
+            _log("No web context retrieved")
+    
     top_items = items[:8]
     context = "\n".join(
         f"- כותרת: {item['title']}\n  תקציר: {item['summary']}\n  מקור: {item['source']}\n  תאריך: {item['published']}"
         for item in top_items
     )
+    
+    # Add web context to the prompt if available
+    if web_context:
+        context = f"הקשר נוסף מהרשת:\n{web_context}\n\nמקורות חדשות:\n{context}"
+    
     prompt = (
-        "על סמך החומר מהמקורות להלן, החזר תשובה בעברית במבנה ברור וקצר.\n\n"
+        "על סמך החומר מהמקורות להלן בלבד, כתוב סיכום בעברית.\n\n"
+        "הוראות חשובות מאוד:\n"
+        "1. אסור להמציא פרטים שלא קיימים במקורות\n"
+        "2. אסור לנחש או להשלים מידע חסר\n"
+        "3. אסור לכתוב דברים שאין להם בסיס במקורות\n"
+        "4. אם מידע לא מספיק - כתוב רק מה שיש, ללא פנטזיות\n"
+        "5. כל משפט חייב להיות מבוסס על מידע מהמקורות שלהלן\n\n"
+        "השתמש רק במידע שמופיע במקורות למטה. לא להוסיף דבר משלך.\n\n"
         "פורמט (כותרות שדה, בלי JSON):\n"
-        "SUMMARY:\n (1–2 פסקאות)\n"
-        "DETAILS:\n (עיקרי הדיווח: כותרת קצרה ואז 15–25 שורות, פסקאות מופרדות ב-\\n\\n)\n"
-        "KEY_POINTS:\n (4–6 שורות עם מקף)\n"
-        "SOURCE_CONTEXT:\n (מקורות ומועדים)\n\n"
-        "כלול עובדות עיקריות מהמקור. כותרת מבוקשת: "
+        "SUMMARY:\n (סיכום קצר של מה שיש במקורות, בלי המצאות)\n"
+        "DETAILS:\n (הרחבה רק של מה שיש במקורות, ללא הוספות)\n"
+        "KEY_POINTS:\n (נקודות עיקריות מהמקורות בלבד)\n"
+        "SOURCE_CONTEXT:\n (מקורות ותאריכים)\n\n"
+        "כותרת מבוקשת: "
         f"{headline}"
     )
     response = llm.invoke(f"{prompt}\n\n{context}")
