@@ -17,7 +17,13 @@ from langchain_openai import ChatOpenAI
 from mcp.client.session import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.server.fastmcp import FastMCP
-from tavily import TavilyClient
+
+# Optional Tavily import for web search
+try:
+    from tavily import TavilyClient
+    TAVILY_AVAILABLE = True
+except ImportError:
+    TAVILY_AVAILABLE = False
 
 
 mcp = FastMCP("HonestNews")
@@ -169,6 +175,10 @@ def _clean_summary(summary: str) -> str:
 
 def _search_web_context(query: str, max_results: int = 5) -> str:
     """Search the web for additional context using Tavily."""
+    if not TAVILY_AVAILABLE:
+        _log("Tavily package not installed, skipping web search")
+        return ""
+    
     tavily_api_key = os.getenv("TAVILY_API_KEY")
     if not tavily_api_key:
         _log("Tavily API key not configured, skipping web search")
