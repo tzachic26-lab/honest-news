@@ -103,8 +103,6 @@ function formatParagraphs(s: string): string {
 }
 
 function formatStructuredSummary(data: StructuredSummary): string {
-  const parts: string[] = []
-  
   // Merge all sections into one narrative summary
   let narrative = ""
   
