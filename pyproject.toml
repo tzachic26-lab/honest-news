@@ -1,9 +1,7 @@
 [project]
-name = "mcp-crash-course"
+name = "honest-news"
 version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.9"
 dependencies = [
     "langchain>=0.3.27",
     "langchain-community>=0.3.31",
@@ -12,4 +10,5 @@ dependencies = [
     "langchain-openai>=0.3.35",
     "langgraph>=1.0.1",
     "python-dotenv>=1.2.1",
+    "tavily-python>=0.8.0",
 ]
