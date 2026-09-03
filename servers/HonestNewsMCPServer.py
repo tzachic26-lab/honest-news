@@ -805,6 +805,7 @@ def headline_details(headline: str) -> dict[str, object]:
     _log("headline_details: using ChatGPT")
     
     # Search web for additional context
+    web_context = ""
     if exact_match:
         web_context = _search_web_context(exact_match["title"], max_results=3)
         if web_context:
