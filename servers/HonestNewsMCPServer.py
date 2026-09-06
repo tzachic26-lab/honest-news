@@ -266,6 +266,76 @@ def _dedupe_items(
     return selected, filtered_titles
 
 
+def _dedupe_items_with_llm(
+    items: list[dict[str, str]],
+    limit: int,
+    overlap_threshold: float = 0.3,
+) -> tuple[list[dict[str, str]], list[str]]:
+    """First apply token-based dedupe, then use LLM for semantic duplicate detection."""
+    # First pass: token-based dedupe as fast pre-filter
+    selected, filtered_titles = _dedupe_items(items, limit * 2, overlap_threshold)
+
+    llm = _get_llm()
+    if not llm or len(selected) <= 1:
+        return selected[:limit], filtered_titles
+
+    use_llm = os.getenv("NEWS_DEDUPE_USE_LLM", "1").lower() in ("1", "true", "yes")
+    if not use_llm:
+        _log("LLM dedupe disabled, using token-based dedupe only")
+        return selected[:limit], filtered_titles
+
+    try:
+        _log(f"Running LLM-based dedupe on {len(selected)} items")
+        prompt_items = [
+            {
+                "id": idx,
+                "title": item.get("title", ""),
+                "summary": item.get("summary", "")[:200],
+            }
+            for idx, item in enumerate(selected)
+        ]
+        items_json = json.dumps(prompt_items, ensure_ascii=False)
+
+        prompt = (
+            "You are given a list of news headlines with summaries. "
+            "Identify which items are duplicates or semantically similar (same event/story). "
+            "Return a JSON object with one key 'unique_indices' containing a list of indices "
+            "of the most representative, non-duplicate items to keep. "
+            "Preserve the original order of indices. Keep at most {limit} items. "
+            "If two items cover the same event, keep only the most informative one. "
+            "Return only valid JSON without markdown.".format(limit=limit)
+        )
+
+        response = llm.invoke(f"{prompt}\n\n{items_json}")
+
+        try:
+            parsed = json.loads(response.content)
+            if isinstance(parsed, dict) and "unique_indices" in parsed:
+                unique_indices = parsed["unique_indices"]
+            elif isinstance(parsed, list):
+                unique_indices = parsed
+            else:
+                _log("LLM dedupe returned unexpected format, falling back")
+                return selected[:limit], filtered_titles
+
+            # Validate indices
+            unique_indices = [int(i) for i in unique_indices if isinstance(i, int) and 0 <= i < len(selected)]
+            unique_indices = list(dict.fromkeys(unique_indices))[:limit]
+
+            llm_filtered = [selected[i] for i in unique_indices]
+            removed_titles = [selected[i]["title"] for i in range(len(selected)) if i not in unique_indices]
+            _log(f"LLM dedupe kept {len(llm_filtered)} items, removed {len(removed_titles)}")
+            return llm_filtered, filtered_titles + removed_titles
+
+        except Exception as exc:
+            _log(f"LLM dedupe JSON parse failed: {exc}")
+            return selected[:limit], filtered_titles
+
+    except Exception as exc:
+        _log(f"LLM dedupe failed: {exc}")
+        return selected[:limit], filtered_titles
+
+
 def _normalize_orientation(value: str) -> str:
     value = value.strip().lower()
     if value in {"left", "שמאל"}:
@@ -491,7 +561,7 @@ def latest_headlines(limit: int = 5, orientation: str | None = None) -> list[dic
     rss_xml = _fetch_rss(rss_query)
     items = [item for item in _parse_items(rss_xml) if _is_today(item.get("published", ""))]
     dedupe_limit = max(limit * 8, limit)
-    selected, filtered_titles = _dedupe_items(items, dedupe_limit)
+    selected, filtered_titles = _dedupe_items_with_llm(items, dedupe_limit)
 
     if filtered_titles:
         print("latest_headlines: filtered similar headlines:")
@@ -504,9 +574,9 @@ def latest_headlines(limit: int = 5, orientation: str | None = None) -> list[dic
         if norm_orientation != "neutral":
             filtered = _filter_by_orientation(selected, norm_orientation)
             if filtered:
-                selected, _ = _dedupe_items(filtered, limit, overlap_threshold=0.2)
+                selected, _ = _dedupe_items_with_llm(filtered, limit, overlap_threshold=0.2)
                 if len(selected) < limit:
-                    selected, _ = _dedupe_items(filtered, limit, overlap_threshold=0.1)
+                    selected, _ = _dedupe_items_with_llm(filtered, limit, overlap_threshold=0.1)
             else:
                 print("latest_headlines: no orientation matches, returning empty list")
                 selected = []
